@@ -16,19 +16,19 @@ unsigned int noCommLoops = 0;                 //main loop without communication 
 double speed_cmd_left2 = 0;      
 
 const int PIN_ENCOD_A_MOTOR_LEFT = 2;               //A channel for encoder of left motor                    
-const int PIN_ENCOD_B_MOTOR_LEFT = 4;               //B channel for encoder of left motor
+const int PIN_ENCOD_B_MOTOR_LEFT = 3;               //B channel for encoder of left motor
 
-const int PIN_ENCOD_A_MOTOR_RIGHT = 3;              //A channel for encoder of right motor         
-const int PIN_ENCOD_B_MOTOR_RIGHT = 5;              //B channel for encoder of right motor 
+const int PIN_ENCOD_A_MOTOR_RIGHT = 19;              //A channel for encoder of right motor         
+const int PIN_ENCOD_B_MOTOR_RIGHT = 18;              //B channel for encoder of right motor 
 
 const int PIN_SIDE_LIGHT_LED = 46;                  //Side light blinking led pin
 
 unsigned long lastMilli = 0;
 
 //--- Robot-specific constants ---
-const double radius = 0.04;                   //Wheel radius, in m
-const double wheelbase = 0.187;               //Wheelbase, in m
-const double encoder_cpr = 990;               //Encoder ticks or counts per rotation
+const double radius = 0,15;                   //Wheel radius, in m
+const double wheelbase = 0.46;               //Wheelbase, in m
+const double encoder_cpr = 36;               //Encoder ticks or counts per rotation
 const double speed_to_pwm_ratio = 0.00235;    //Ratio to convert speed (in m/s) to PWM value. It was obtained by plotting the wheel speed in relation to the PWM motor command (the value is the slope of the linear function).
 const double min_speed_cmd = 0.0882;          //(min_speed_cmd/speed_to_pwm_ratio) is the minimum command value needed for the motor to start moving. This value was obtained by plotting the wheel speed in relation to the PWM motor command (the value is the constant of the linear function).
 
@@ -58,9 +58,18 @@ volatile float pos_right = 0;      //Right motor encoder position
 PID PID_leftMotor(&speed_act_left, &speed_cmd_left, &speed_req_left, PID_left_param[0], PID_left_param[1], PID_left_param[2], DIRECT);          //Setting up the PID for left motor
 PID PID_rightMotor(&speed_act_right, &speed_cmd_right, &speed_req_right, PID_right_param[0], PID_right_param[1], PID_right_param[2], DIRECT);   //Setting up the PID for right motor
 
-Adafruit_MotorShield AFMS = Adafruit_MotorShield();  // Create the motor shield object with the default I2C address
-Adafruit_DCMotor *leftMotor = AFMS.getMotor(1);      //Create left motor object
-Adafruit_DCMotor *rightMotor = AFMS.getMotor(2);     //Create right motor object
+// Adafruit_MotorShield AFMS = Adafruit_MotorShield();  // Create the motor shield object with the default I2C address
+// Adafruit_DCMotor *leftMotor = AFMS.getMotor(1);      //Create left motor object
+// Adafruit_DCMotor *rightMotor = AFMS.getMotor(2);     //Create right motor object
+
+// Pin untuk mengontrol driver motor
+#include <Servo.h>  //  You need to include Servo.h as it is used by the HB-25 Library
+#include <HB25MotorControl.h>
+
+const byte controlPinL = 6;
+const byte controlPinR = 7;
+HB25MotorControl motorControlL(controlPinL);
+HB25MotorControl motorControlR(controlPinR);
   
 ros::NodeHandle nh;
 
@@ -99,13 +108,12 @@ void setup() {
   nh.subscribe(cmd_vel);                    //suscribe to ROS topic for velocity commands
   nh.advertise(speed_pub);                  //prepare to publish speed in ROS topic
  
-  AFMS.begin();
+  motorControlL.begin();
+  motorControlR.begin();
   
   //setting motor speeds to zero
-  leftMotor->setSpeed(0);
-  leftMotor->run(BRAKE);
-  rightMotor->setSpeed(0);
-  rightMotor->run(BRAKE);
+  motorControlL.moveAtSpeed(0);
+  motorControlR.moveAtSpeed(0);
  
   //setting PID parameters
   PID_leftMotor.SetSampleTime(95);
@@ -178,20 +186,16 @@ void loop() {
     PWM_leftMotor = constrain(((speed_req_left+sgn(speed_req_left)*min_speed_cmd)/speed_to_pwm_ratio) + (speed_cmd_left/speed_to_pwm_ratio), -255, 255); //
     
     if (noCommLoops >= noCommLoopMax) {                   //Stopping if too much time without command
-      leftMotor->setSpeed(0);
-      leftMotor->run(BRAKE);
+    motorControlL.moveAtSpeed(0);
     }
     else if (speed_req_left == 0){                        //Stopping
-      leftMotor->setSpeed(0);
-      leftMotor->run(BRAKE);
+      motorControlL.moveAtSpeed(0);
     }
     else if (PWM_leftMotor > 0){                          //Going forward
-      leftMotor->setSpeed(abs(PWM_leftMotor));
-      leftMotor->run(BACKWARD);
+      motorControlL.moveAtSpeed(abs(PWM_leftMotor));
     }
     else {                                               //Going backward
-      leftMotor->setSpeed(abs(PWM_leftMotor));
-      leftMotor->run(FORWARD);
+      motorControlL.moveAtSpeed(-(abs(PWM_leftMotor)));
     }
     
     speed_cmd_right = constrain(speed_cmd_right, -max_speed, max_speed);    
@@ -200,20 +204,16 @@ void loop() {
     PWM_rightMotor = constrain(((speed_req_right+sgn(speed_req_right)*min_speed_cmd)/speed_to_pwm_ratio) + (speed_cmd_right/speed_to_pwm_ratio), -255, 255); // 
 
     if (noCommLoops >= noCommLoopMax) {                   //Stopping if too much time without command
-      rightMotor->setSpeed(0);
-      rightMotor->run(BRAKE);
+    motorControlR.moveAtSpeed(0);
     }
-    else if (speed_req_right == 0){                       //Stopping
-      rightMotor->setSpeed(0);
-      rightMotor->run(BRAKE);
+    else if (speed_req_left == 0){                        //Stopping
+      motorControlR.moveAtSpeed(0);
     }
-    else if (PWM_rightMotor > 0){                         //Going forward
-      rightMotor->setSpeed(abs(PWM_rightMotor));
-      rightMotor->run(FORWARD);
+    else if (PWM_leftMotor > 0){                          //Going forward
+      motorControlR.moveAtSpeed(abs(PWM_leftMotor));
     }
-    else {                                                //Going backward
-      rightMotor->setSpeed(abs(PWM_rightMotor));
-      rightMotor->run(BACKWARD);
+    else {                                               //Going backward
+      motorControlR.moveAtSpeed(-(abs(PWM_leftMotor)));
     }
 
     if((millis()-lastMilli) >= LOOPTIME){         //write an error if execution time of the loop in longer than the specified looptime
